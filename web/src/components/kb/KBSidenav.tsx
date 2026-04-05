@@ -124,6 +124,15 @@ export function KBSidenav({
     return localStorage.getItem('llmwiki:sources-expanded') === 'true'
   })
 
+  const prevSourceCount = React.useRef(sourceDocs.length)
+  React.useEffect(() => {
+    if (sourceDocs.length > prevSourceCount.current && !sourcesExpanded) {
+      setSourcesExpanded(true)
+      localStorage.setItem('llmwiki:sources-expanded', 'true')
+    }
+    prevSourceCount.current = sourceDocs.length
+  }, [sourceDocs.length, sourcesExpanded])
+
   const toggleSources = () => {
     const next = !sourcesExpanded
     setSourcesExpanded(next)

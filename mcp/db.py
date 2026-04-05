@@ -16,29 +16,33 @@ async def get_pool() -> asyncpg.Pool:
     return _pool
 
 
-async def _set_rls(conn, user_id: str):
-    claims = json.dumps({"sub": user_id})
+async def _set_rls(conn, user_id: str, claims: dict | None = None):
+    if claims:
+        jwt_claims = {k: v for k, v in claims.items() if k in ("sub", "aud", "role", "client_id", "scope")}
+        jwt_claims.setdefault("sub", user_id)
+    else:
+        jwt_claims = {"sub": user_id}
     await conn.execute("SET LOCAL ROLE authenticated")
-    await conn.execute("SELECT set_config('request.jwt.claims', $1, true)", claims)
+    await conn.execute("SELECT set_config('request.jwt.claims', $1, true)", json.dumps(jwt_claims))
 
 
-async def scoped_query(user_id: str, sql: str, *args) -> list[dict]:
+async def scoped_query(user_id: str, sql: str, *args, claims: dict | None = None) -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _set_rls(conn, user_id)
+            await _set_rls(conn, user_id, claims)
             rows = await conn.fetch(sql, *args)
             return [dict(r) for r in rows]
 
 
-async def scoped_queryrow(user_id: str, sql: str, *args) -> dict | None:
-    rows = await scoped_query(user_id, sql, *args)
+async def scoped_queryrow(user_id: str, sql: str, *args, claims: dict | None = None) -> dict | None:
+    rows = await scoped_query(user_id, sql, *args, claims=claims)
     return rows[0] if rows else None
 
 
-async def scoped_execute(user_id: str, sql: str, *args) -> str:
+async def scoped_execute(user_id: str, sql: str, *args, claims: dict | None = None) -> str:
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _set_rls(conn, user_id)
+            await _set_rls(conn, user_id, claims)
             return await conn.execute(sql, *args)

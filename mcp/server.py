@@ -4,8 +4,11 @@ import os
 
 import logfire
 import uvicorn
+from urllib.parse import urlparse
+
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
@@ -18,12 +21,18 @@ if settings.LOGFIRE_TOKEN:
     logfire.configure(token=settings.LOGFIRE_TOKEN, service_name="supavault-mcp")
     logfire.instrument_asyncpg()
 
+_mcp_host = urlparse(settings.MCP_URL).hostname or "localhost"
+
 mcp = FastMCP(
     "Supavault",
     token_verifier=SupabaseTokenVerifier(),
     auth=AuthSettings(
         issuer_url=AnyHttpUrl(f"{settings.SUPABASE_URL}/auth/v1"),
         resource_server_url=AnyHttpUrl(settings.MCP_URL),
+    ),
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[_mcp_host],
     ),
 )
 

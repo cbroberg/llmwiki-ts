@@ -135,8 +135,7 @@ async def create_note(
 
     if body.content:
         chunks = chunk_text(body.content)
-        pool = request.app.state.pool
-        await store_chunks(pool, str(row["id"]), str(row["user_id"]), str(kb_id), chunks)
+        await store_chunks(db.conn, str(row["id"]), str(row["user_id"]), str(kb_id), chunks)
 
     return row
 

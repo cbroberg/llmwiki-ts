@@ -13,6 +13,10 @@ class ScopedDB:
     def user_id(self) -> str:
         return self._user_id
 
+    @property
+    def conn(self) -> asyncpg.Connection:
+        return self._conn
+
     async def fetchrow(self, sql: str, *args) -> dict | None:
         row = await self._conn.fetchrow(sql, *args)
         return dict(row) if row else None

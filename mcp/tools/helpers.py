@@ -3,7 +3,9 @@ import logging
 from fnmatch import fnmatch
 
 import aioboto3
+import jwt as pyjwt
 from mcp.server.fastmcp import Context
+from mcp.server.auth.middleware.auth_context import get_access_token
 
 from config import settings
 from db import scoped_queryrow
@@ -20,7 +22,23 @@ def get_user_id(ctx: Context) -> str:
         if "local_server" not in sys.modules:
             raise RuntimeError("SUPAVAULT_USER_ID is set but local_server is not loaded — refusing to bypass auth")
         return local_id
-    return ctx.request_context.access_token.client_id
+
+    access_token = get_access_token()
+    if not access_token:
+        raise RuntimeError("Not authenticated")
+
+    try:
+        payload = pyjwt.decode(access_token.token, options={"verify_signature": False})
+        sub = payload.get("sub", "")
+        if sub:
+            return sub
+    except Exception:
+        pass
+
+    if access_token.client_id:
+        return access_token.client_id
+
+    raise RuntimeError("No user identifier in token")
 
 
 def deep_link(kb_slug: str, path: str, filename: str) -> str:
