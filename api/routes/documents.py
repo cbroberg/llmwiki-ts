@@ -188,9 +188,12 @@ async def create_note(
 
     meta, _ = parse_frontmatter(body.content)
 
-    title = body.filename
     if isinstance(meta.get("title"), str) and meta["title"].strip():
         title = meta["title"].strip()
+    else:
+        # Humanize filename: "operating-leverage.md" → "Operating Leverage"
+        stem = body.filename.rsplit(".", 1)[0] if "." in body.filename else body.filename
+        title = stem.replace("-", " ").replace("_", " ").strip().title()
 
     tags: list[str] = []
     if isinstance(meta.get("tags"), list):

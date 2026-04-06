@@ -35,9 +35,11 @@ _mcp_host = urlparse(settings.MCP_URL).hostname or "localhost"
 mcp = FastMCP(
     "LLM Wiki",
     instructions=(
-        "You are connected to an LLM Wiki — a personal knowledge workspace where you "
-        "compile and maintain a structured wiki from raw source documents. "
-        "Call the `guide` tool first to learn how it works and see available knowledge bases."
+        "You are connected to an LLM Wiki workspace. The user has uploaded files, notes, "
+        "and documents that you can read, search, edit, and organize. Your job is to work "
+        "with these materials — answer questions, take notes, and compile structured wiki "
+        "pages from the raw sources. Call the `guide` tool first to see available knowledge "
+        "bases and learn the full workflow."
     ),
     token_verifier=SupabaseTokenVerifier(),
     auth=AuthSettings(

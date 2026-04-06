@@ -410,36 +410,49 @@ export function KBDetail({ kbId, kbName }: Props) {
     }
   }, [indexLoaded, wikiTree, wikiActivePath, activeSourceDocId, urlRestored, updateUrl])
 
-  // Fetch wiki page content
+  // Track the active wiki doc's version to avoid re-fetching on unrelated updates
+  const activeWikiDoc = React.useMemo(() => {
+    if (!wikiActivePath) return null
+    return wikiDocs.find((d) => {
+      const relative = (d.path + d.filename).replace(/^\/wiki\/?/, '')
+      return relative === wikiActivePath
+    }) ?? null
+  }, [wikiActivePath, wikiDocs])
+
+  const activeWikiVersion = activeWikiDoc?.version ?? -1
+  const activeWikiDocId = activeWikiDoc?.id ?? null
+
+  // Fetch wiki page content — only when path changes or version bumps
   React.useEffect(() => {
     if (!wikiActivePath || !token) {
       setPageLoadedPath(null)
       return
     }
 
-    const doc = wikiDocs.find((d) => {
-      const relative = (d.path + d.filename).replace(/^\/wiki\/?/, '')
-      return relative === wikiActivePath
-    })
-
-    if (!doc) {
+    if (!activeWikiDoc) {
       setPageContent(`Page not found: ${wikiActivePath}`)
       setPageTitle('')
       setPageLoadedPath(wikiActivePath)
       return
     }
 
-    setPageLoading(true)
-    setPageLoadedPath(null)
-    setPageTitle(doc.title || doc.filename.replace(/\.(md|txt)$/, ''))
-    apiFetch<{ content: string }>(`/v1/documents/${doc.id}/content`, token)
+    setPageTitle(activeWikiDoc.title || activeWikiDoc.filename.replace(/\.(md|txt)$/, ''))
+
+    // Skip loading state on version bumps (live updates from MCP) to avoid flash
+    const isLiveUpdate = pageLoadedPath === wikiActivePath
+    if (!isLiveUpdate) {
+      setPageLoading(true)
+      setPageLoadedPath(null)
+    }
+
+    apiFetch<{ content: string }>(`/v1/documents/${activeWikiDoc.id}/content`, token)
       .then((res) => setPageContent(res.content || ''))
       .catch(() => setPageContent('Failed to load page content.'))
       .finally(() => {
         setPageLoading(false)
         setPageLoadedPath(wikiActivePath)
       })
-  }, [wikiActivePath, token, wikiDocs])
+  }, [wikiActivePath, token, activeWikiDocId, activeWikiVersion])
 
   const handleWikiNavigate = React.useCallback(
     (path: string) => {
