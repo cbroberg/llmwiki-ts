@@ -23,6 +23,7 @@ async def _create_note(
     if not dir_path.startswith("/"):
         dir_path = "/" + dir_path
 
+    # Detect asset extensions
     _title_lower = title.lower()
     asset_ext = None
     for ext in _ASSET_EXTENSIONS:
@@ -30,14 +31,25 @@ async def _create_note(
             asset_ext = ext
             break
 
+    # Derive filename (slug) from title
     if asset_ext:
         filename = re.sub(r"[^\w\s\-.]", "", _title_lower.replace(" ", "-"))
         file_type = asset_ext.lstrip(".")
     else:
-        filename = re.sub(r"[^\w\s\-.]", "", _title_lower.replace(" ", "-"))
+        slug = _title_lower
+        # Strip .md if Claude passed a filename as the title
+        slug = re.sub(r"\.(md|txt)$", "", slug)
+        filename = re.sub(r"[^\w\s\-.]", "", slug.replace(" ", "-"))
         if not filename.endswith(".md"):
             filename += ".md"
         file_type = "md"
+
+    # Ensure title is human-readable, not a slug
+    # "operating-leverage.md" → "Operating Leverage"
+    clean_title = re.sub(r"\.(md|txt|svg|csv|json|xml|html)$", "", title)
+    if clean_title == clean_title.lower() and "-" in clean_title:
+        clean_title = clean_title.replace("-", " ").replace("_", " ").strip().title()
+    title = clean_title
 
     note_date = date_str or date.today().isoformat()
 
