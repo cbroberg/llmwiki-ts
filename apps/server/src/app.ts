@@ -9,6 +9,8 @@ import { uploadRoutes } from './routes/uploads.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { userRoutes } from './routes/user.js';
 import { searchRoutes } from './routes/search.js';
+import { streamRoutes } from './routes/stream.js';
+import { ingestRoutes } from './routes/ingest.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -32,6 +34,8 @@ export function createApp(): Hono {
   app.route('/api/v1', apiKeyRoutes);
   app.route('/api/v1', userRoutes);
   app.route('/api/v1', searchRoutes);
+  app.route('/api/v1', streamRoutes);
+  app.route('/api/v1', ingestRoutes);
 
   if (process.env.LLMWIKI_SERVE_WEB === '1') {
     // Production: serve static web assets

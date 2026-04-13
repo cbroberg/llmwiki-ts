@@ -4,6 +4,8 @@ import { navigate, useSearchParams, Link } from '@/lib/router';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { connectSSE } from '@/lib/sse';
 import type { KnowledgeBase, Document } from '@llmwiki/shared';
 
 interface Props {
@@ -28,8 +30,50 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
   const [fileDragOver, setFileDragOver] = useState(false);
   const [sourcesExpanded, setSourcesExpanded] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [ingestingDocs, setIngestingDocs] = useState<Set<string>>(new Set());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Document[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const params = useSearchParams();
+
+  // Cmd+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+      if (e.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // SSE for real-time ingest updates
+  useEffect(() => {
+    if (!kb) return;
+    const disconnect = connectSSE((event) => {
+      if (event.kbId !== kb.id) return;
+
+      if (event.type === 'ingest_started') {
+        setIngestingDocs((prev) => new Set([...prev, event.docId as string]));
+      }
+
+      if (event.type === 'ingest_completed' || event.type === 'ingest_failed') {
+        setIngestingDocs((prev) => {
+          const next = new Set(prev);
+          next.delete(event.docId as string);
+          return next;
+        });
+        // Refresh docs to pick up new wiki pages
+        api.get<Document[]>(`/v1/knowledge-bases/${kb.id}/documents`).then(setDocs);
+      }
+    });
+    return disconnect;
+  }, [kb?.id]);
 
   // Load KB by slug
   useEffect(() => {
@@ -183,7 +227,10 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
 
           {/* Search + Upload */}
           <div class="shrink-0 px-2 pb-1 flex items-center gap-1.5">
-            <button class="flex items-center gap-2 flex-1 px-2.5 py-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors">
+            <button
+              onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+              class="flex items-center gap-2 flex-1 px-2.5 py-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground border border-border hover:bg-accent rounded-md transition-colors cursor-pointer"
+            >
               <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
               </svg>
@@ -273,6 +320,7 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
                   )}
                   {sourceDocs.map((doc) => {
                     const isActive = activeDoc?.id === doc.id;
+                    const isIngesting = ingestingDocs.has(doc.id) || doc.status === 'processing';
                     return (
                       <button
                         key={doc.id}
@@ -282,8 +330,17 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
                           isActive ? 'bg-accent text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
                         )}
                       >
-                        <FileIcon type={doc.fileType} />
+                        {isIngesting ? (
+                          <svg class="h-3 w-3 shrink-0 animate-spin text-accent-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v4m0 12v4m-7-7H3m18 0h-4m-1.5-7.5L17 7m-10 10l1.5-1.5M7 7L5.5 5.5m13 13L17 17" />
+                          </svg>
+                        ) : (
+                          <FileIcon type={doc.fileType} />
+                        )}
                         <span class="truncate">{doc.title ?? doc.filename}</span>
+                        {isIngesting && (
+                          <span class="text-[9px] text-accent-blue ml-auto shrink-0">ingesting</span>
+                        )}
                       </button>
                     );
                   })}
@@ -319,6 +376,87 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* Search overlay */}
+      {searchOpen && (
+        <div class="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSearchOpen(false)} />
+          <div class="relative z-50 w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+            <div class="flex items-center gap-3 px-4 border-b border-border">
+              <svg class="h-4 w-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search wiki and sources..."
+                class="flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground/50"
+                value={searchQuery}
+                onInput={(e) => {
+                  const q = (e.target as HTMLInputElement).value;
+                  setSearchQuery(q);
+                  if (q.trim() && kb) {
+                    // Filter docs client-side for instant results
+                    const lower = q.toLowerCase();
+                    setSearchResults(
+                      docs.filter(
+                        (d) =>
+                          d.filename.toLowerCase().includes(lower) ||
+                          (d.title ?? '').toLowerCase().includes(lower) ||
+                          (d.content ?? '').toLowerCase().includes(lower),
+                      ).slice(0, 10),
+                    );
+                  } else {
+                    setSearchResults([]);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSearchOpen(false);
+                }}
+              />
+              <kbd class="text-[10px] text-muted-foreground/30 bg-muted px-1.5 py-0.5 rounded">esc</kbd>
+            </div>
+            {searchResults.length > 0 && (
+              <div class="max-h-80 overflow-y-auto py-2">
+                {searchResults.map((doc) => (
+                  <button
+                    key={doc.id}
+                    onClick={() => {
+                      if (doc.path.startsWith('/wiki/')) {
+                        selectWikiPage(doc);
+                      } else {
+                        selectSourceDoc(doc);
+                      }
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }}
+                    class="flex items-center gap-3 w-full px-4 py-2 text-sm hover:bg-accent transition-colors text-left"
+                  >
+                    <FileIcon type={doc.fileType} />
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate font-medium">{doc.title ?? doc.filename}</p>
+                      <p class="text-xs text-muted-foreground truncate">{doc.path}{doc.filename}</p>
+                    </div>
+                    <span class="text-[10px] text-muted-foreground/40 shrink-0">
+                      {doc.path.startsWith('/wiki/') ? 'wiki' : 'source'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchQuery && searchResults.length === 0 && (
+              <div class="px-4 py-8 text-center text-sm text-muted-foreground">
+                No results for "{searchQuery}"
+              </div>
+            )}
+            {!searchQuery && (
+              <div class="px-4 py-8 text-center text-sm text-muted-foreground/50">
+                Type to search across wiki pages and sources
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

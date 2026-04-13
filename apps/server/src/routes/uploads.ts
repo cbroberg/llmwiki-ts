@@ -3,7 +3,8 @@ import { db, documents, knowledgeBases, DATA_DIR } from '@llmwiki/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser } from '../middleware/auth.js';
 import { join } from 'node:path';
-import { mkdirSync, existsSync, writeFileSync, appendFileSync, statSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { triggerIngest } from '../services/ingest.js';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_EXTENSIONS = new Set([
@@ -76,6 +77,13 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   }
 
   const doc = db.select().from(documents).where(eq(documents.id, docId)).get();
+
+  // Auto-trigger ingest for text-readable sources
+  const ingestableTypes = new Set(['md', 'txt', 'html', 'htm', 'csv']);
+  if (ingestableTypes.has(ext)) {
+    triggerIngest(docId, kbId, user.id);
+  }
+
   return c.json(doc, 201);
 });
 
