@@ -1,12 +1,10 @@
-import { spawn } from 'node:child_process';
 import { db, documents, knowledgeBases } from '@llmwiki/db';
 import { eq, and } from 'drizzle-orm';
 import { broadcaster } from './broadcast.js';
+import { spawnClaude } from './claude.js';
 
-const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude';
-const INGEST_MODEL = process.env.INGEST_MODEL ?? 'claude-sonnet-4-5-20250514';
+const INGEST_MODEL = process.env.INGEST_MODEL ?? '';
 const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 120_000);
-const PROJECT_ROOT = process.env.LLMWIKI_PROJECT_ROOT ?? process.cwd();
 
 // One ingest at a time per KB
 const activeIngests = new Map<string, boolean>();
@@ -100,8 +98,18 @@ IMPORTANT RULES:
 
   console.log(`[ingest] Starting ingest for "${doc.filename}" in "${kb.name}"`);
 
+  const args = [
+    '-p', prompt,
+    '--allowedTools', 'mcp__llmwiki__guide,mcp__llmwiki__search,mcp__llmwiki__read,mcp__llmwiki__write',
+    '--dangerously-skip-permissions',
+    '--max-turns', '25',
+    '--output-format', 'json',
+    '--no-session-persistence',
+    ...(INGEST_MODEL ? ['--model', INGEST_MODEL] : []),
+  ];
+
   try {
-    const result = await spawnClaude(prompt, INGEST_TIMEOUT_MS);
+    const result = await spawnClaude(args, INGEST_TIMEOUT_MS);
 
     // Mark as ready
     db.update(documents)
@@ -150,54 +158,3 @@ IMPORTANT RULES:
   }
 }
 
-function spawnClaude(prompt: string, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      '-p', prompt,
-      '--allowedTools', 'mcp__llmwiki__guide,mcp__llmwiki__search,mcp__llmwiki__read,mcp__llmwiki__write',
-      '--dangerously-skip-permissions',
-      '--max-turns', '25',
-      '--model', INGEST_MODEL,
-      '--output-format', 'json',
-      '--no-session-persistence',
-    ];
-
-    const child = spawn(CLAUDE_BIN, args, {
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, PATH: process.env.PATH },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    child.stdin.end();
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Ingest timed out after ${timeoutMs / 1000}s`));
-    }, timeoutMs);
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`claude exited with code ${code}: ${stderr.slice(0, 500)}`));
-      }
-    });
-
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(new Error(`Failed to spawn claude: ${err.message}`));
-    });
-  });
-}

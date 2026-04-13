@@ -78,4 +78,4 @@ export function searchChunks(query: string, kbId: string, userId: string, limit 
     .all(query, kbId, userId, limit);
 }
 
-export { DB_PATH, DATA_DIR };
+export { sqlite as rawDb, DB_PATH, DATA_DIR };

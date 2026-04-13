@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { db, knowledgeBases, documents } from '@llmwiki/db';
+import { db, rawDb, knowledgeBases, documents } from '@llmwiki/db';
 import { CreateKBSchema, UpdateKBSchema } from '@llmwiki/shared';
-import { eq, and, sql, like, not } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser } from '../middleware/auth.js';
 import { uniqueSlug } from '../lib/slug.js';
 
@@ -13,32 +13,15 @@ kbRoutes.use('/knowledge-bases', requireAuth);
 kbRoutes.get('/knowledge-bases', (c) => {
   const user = getUser(c);
 
-  const rows = db
-    .select({
-      id: knowledgeBases.id,
-      userId: knowledgeBases.userId,
-      name: knowledgeBases.name,
-      slug: knowledgeBases.slug,
-      description: knowledgeBases.description,
-      createdAt: knowledgeBases.createdAt,
-      updatedAt: knowledgeBases.updatedAt,
-      sourceCount: sql<number>`(
-        SELECT COUNT(*) FROM documents
-        WHERE documents.knowledge_base_id = ${knowledgeBases.id}
-          AND documents.archived = 0
-          AND documents.path NOT LIKE '/wiki/%'
-      )`,
-      wikiPageCount: sql<number>`(
-        SELECT COUNT(*) FROM documents
-        WHERE documents.knowledge_base_id = ${knowledgeBases.id}
-          AND documents.archived = 0
-          AND documents.path LIKE '/wiki/%'
-      )`,
-    })
-    .from(knowledgeBases)
-    .where(eq(knowledgeBases.userId, user.id))
-    .orderBy(knowledgeBases.updatedAt)
-    .all();
+  const rows = rawDb.prepare(`
+    SELECT kb.id, kb.user_id as userId, kb.name, kb.slug, kb.description,
+      kb.created_at as createdAt, kb.updated_at as updatedAt,
+      (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.archived = 0 AND d.path NOT LIKE '/wiki/%') as sourceCount,
+      (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.archived = 0 AND d.path LIKE '/wiki/%') as wikiPageCount
+    FROM knowledge_bases kb
+    WHERE kb.user_id = ?
+    ORDER BY kb.updated_at
+  `).all(user.id);
 
   return c.json(rows);
 });

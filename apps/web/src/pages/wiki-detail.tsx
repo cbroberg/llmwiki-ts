@@ -32,6 +32,7 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
   const [sourcesExpanded, setSourcesExpanded] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [ingestingDocs, setIngestingDocs] = useState<Set<string>>(new Set());
+  const [pollUntil, setPollUntil] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Document[]>([]);
@@ -55,28 +56,36 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // SSE for real-time ingest updates
+  // Poll for doc changes after upload or during ingest
   useEffect(() => {
     if (!kb) return;
-    const disconnect = connectSSE((event) => {
-      if (event.kbId !== kb.id) return;
+    const hasProcessing = docs.some((d) => d.status === 'processing' || d.status === 'pending');
+    const isPolling = hasProcessing || ingestingDocs.size > 0 || Date.now() < pollUntil;
+    if (!isPolling) return;
 
-      if (event.type === 'ingest_started') {
-        setIngestingDocs((prev) => new Set([...prev, event.docId as string]));
+    const interval = setInterval(() => {
+      // Stop polling after pollUntil expires
+      if (!docs.some((d) => d.status === 'processing' || d.status === 'pending') && ingestingDocs.size === 0 && Date.now() >= pollUntil) {
+        clearInterval(interval);
+        return;
       }
-
-      if (event.type === 'ingest_completed' || event.type === 'ingest_failed') {
+      api.get<Document[]>(`/v1/knowledge-bases/${kb.id}/documents`).then((fresh) => {
+        setDocs(fresh);
         setIngestingDocs((prev) => {
           const next = new Set(prev);
-          next.delete(event.docId as string);
+          for (const id of prev) {
+            const doc = fresh.find((d) => d.id === id);
+            if (doc && doc.status !== 'processing' && doc.status !== 'pending') {
+              next.delete(id);
+            }
+          }
           return next;
         });
-        // Refresh docs to pick up new wiki pages
-        api.get<Document[]>(`/v1/knowledge-bases/${kb.id}/documents`).then(setDocs);
-      }
-    });
-    return disconnect;
-  }, [kb ? kb.id : null]);
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [kb ? kb.id : null, docs.some((d) => d.status === 'processing'), ingestingDocs.size, pollUntil]);
 
   // Load KB by slug
   useEffect(() => {
@@ -144,7 +153,10 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
       for (const file of files) {
         const doc = await api.upload<Document>(`/v1/knowledge-bases/${kb.id}/documents/upload`, file, { path: '/' });
         setDocs((prev) => [...prev, doc]);
+        setIngestingDocs((prev) => new Set([...prev, doc.id]));
       }
+      // Poll for 30s after upload to catch ingest results
+      setPollUntil(Date.now() + 30_000);
     } catch (err) {
       console.error('Upload failed:', err);
     } finally {
@@ -377,7 +389,28 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
         </div>
 
         {/* Main content */}
-        <div class="flex-1 min-w-0 overflow-y-auto">
+        <div
+          class="flex-1 min-w-0 overflow-y-auto"
+          onClick={(e) => {
+            // Handle internal wiki link clicks
+            const target = (e.target as HTMLElement).closest('[data-wiki-link]') as HTMLElement | null;
+            if (!target) return;
+            e.preventDefault();
+            const slug = target.dataset.wikiLink ?? '';
+            // Find matching doc by slug in filename
+            const match = docs.find((d) =>
+              d.filename.replace(/\.md$/, '') === slug ||
+              d.filename.replace(/\.md$/, '').toLowerCase() === slug.toLowerCase()
+            );
+            if (match) {
+              if (match.path.startsWith('/wiki/')) {
+                selectWikiPage(match);
+              } else {
+                selectSourceDoc(match);
+              }
+            }
+          }}
+        >
           {content !== null ? (
             <div class="max-w-3xl mx-auto px-8 py-8">
               <div class="wiki-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
@@ -530,21 +563,48 @@ function FileIcon({ type }: { type: string }): JSX.Element {
 }
 
 function renderMarkdown(md: string): string {
-  // Basic markdown to HTML (will be replaced with proper markdown parser later)
   return md
+    // Code blocks (before inline processing)
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="rounded-lg bg-muted border border-border p-4 my-4 overflow-x-auto text-xs"><code>$2</code></pre>')
+    // Headers
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Inline formatting
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
+    // Wiki-style [[links]] and [[slug|display text]] → internal navigation
+    .replace(/\[\[(.+?)\]\]/g, (_, raw) => {
+      const parts = raw.split('|');
+      const slug = parts[0]!.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+      const display = parts[1] ?? parts[0]!;
+      return `<a href="#" data-wiki-link="${slug}" class="text-accent-blue underline underline-offset-2 decoration-accent-blue/30 hover:decoration-accent-blue cursor-pointer">${display}</a>`;
+    })
+    // Markdown [text](url) links — external open in new tab
+    .replace(/\[(.+?)\]\((.+?)\)/g, (_, text, url) => {
+      if (url.startsWith('http')) {
+        return `<a href="${url}" target="_blank" rel="noopener" class="text-accent-blue underline underline-offset-2">${text}</a>`;
+      }
+      // Internal path link
+      const slug = url.replace(/\.md$/, '').replace(/\//g, '-').replace(/^-/, '');
+      return `<a href="#" data-wiki-link="${slug}" class="text-accent-blue underline underline-offset-2 decoration-accent-blue/30 hover:decoration-accent-blue cursor-pointer">${text}</a>`;
+    })
+    // Tables
+    .replace(/^\|(.+)\|$/gm, (row) => {
+      const cells = row.split('|').filter(Boolean).map((c) => c.trim());
+      if (cells.every((c) => /^[-:]+$/.test(c))) return ''; // separator row
+      const tag = row.includes('---') ? 'td' : 'td';
+      return '<tr>' + cells.map((c) => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+    })
+    // Lists
     .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
+    // Blockquotes
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    // Horizontal rules
     .replace(/^---$/gm, '<hr />')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^(.+)$/gm, (line) => {
-      if (line.startsWith('<')) return line;
-      return line;
-    });
+    // Paragraphs
+    .replace(/\n\n/g, '</p><p>');
 }

@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import {
   db,
+  rawDb,
   knowledgeBases,
   documents,
   documentChunks,
@@ -54,17 +55,13 @@ function resolveKB(nameOrSlug: string, userId: string) {
 server.tool('guide', 'List knowledge bases and explain how the wiki works', {}, () => {
   const user = requireUser();
 
-  const kbs = db
-    .select({
-      name: knowledgeBases.name,
-      slug: knowledgeBases.slug,
-      description: knowledgeBases.description,
-      sourceCount: sql<number>`(SELECT COUNT(*) FROM documents WHERE documents.knowledge_base_id = ${knowledgeBases.id} AND documents.archived = 0 AND documents.path NOT LIKE '/wiki/%')`,
-      wikiPageCount: sql<number>`(SELECT COUNT(*) FROM documents WHERE documents.knowledge_base_id = ${knowledgeBases.id} AND documents.archived = 0 AND documents.path LIKE '/wiki/%')`,
-    })
-    .from(knowledgeBases)
-    .where(eq(knowledgeBases.userId, user.id))
-    .all();
+  const kbs = rawDb.prepare(`
+    SELECT kb.name, kb.slug, kb.description,
+      (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.archived = 0 AND d.path NOT LIKE '/wiki/%') as sourceCount,
+      (SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id AND d.archived = 0 AND d.path LIKE '/wiki/%') as wikiPageCount
+    FROM knowledge_bases kb
+    WHERE kb.user_id = ?
+  `).all(user.id) as Array<{ name: string; slug: string; description: string | null; sourceCount: number; wikiPageCount: number }>;
 
   let text = `# LLM Wiki — How It Works
 
