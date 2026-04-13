@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --radius: 1rem;
+  --radius-sm: calc(1rem - 4px);
+  --radius-md: calc(1rem - 2px);
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* Light mode (default) — warm paper tones matching llmwiki.app */
+  --color-background: hsl(30 3% 96%);
+  --color-foreground: hsl(20 14% 4%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(20 14% 4%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(20 14% 4%);
+  --color-primary: hsl(24 10% 10%);
+  --color-primary-foreground: hsl(30 3% 96%);
+  --color-secondary: hsl(30 5% 92%);
+  --color-secondary-foreground: hsl(24 10% 10%);
+  --color-muted: hsl(30 5% 92%);
+  --color-muted-foreground: hsl(25 5% 45%);
+  --color-accent: hsl(30 6% 94%);
+  --color-accent-foreground: hsl(24 10% 10%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-border: hsl(24 6% 83%);
+  --color-input: hsl(24 6% 83%);
+  --color-ring: hsl(24 10% 10%);
+
+  --color-accent-blue: hsl(220 70% 50%);
+
+  --sidebar-width: 14rem;
+}
+
+/* Dark mode */
+html.dark {
+  --color-background: hsl(20 14% 4%);
+  --color-foreground: hsl(40 10% 90%);
+  --color-card: hsl(20 12% 8%);
+  --color-card-foreground: hsl(40 10% 90%);
+  --color-popover: hsl(20 12% 8%);
+  --color-popover-foreground: hsl(40 10% 90%);
+  --color-primary: hsl(40 10% 90%);
+  --color-primary-foreground: hsl(20 14% 4%);
+  --color-secondary: hsl(20 10% 14%);
+  --color-secondary-foreground: hsl(40 10% 90%);
+  --color-muted: hsl(20 10% 10%);
+  --color-muted-foreground: hsl(25 5% 55%);
+  --color-accent: hsl(20 10% 12%);
+  --color-accent-foreground: hsl(40 10% 90%);
+  --color-destructive: hsl(0 63% 31%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-border: hsl(20 6% 16%);
+  --color-input: hsl(20 6% 16%);
+  --color-ring: hsl(40 10% 90%);
+
+  --color-accent-blue: hsl(220 70% 60%);
+}
+
+html {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Wiki content styling */
+.wiki-content h1 { @apply text-2xl font-bold tracking-tight mt-10 mb-4 first:mt-0; }
+.wiki-content h2 { @apply text-xl font-semibold tracking-tight mt-10 mb-4 pt-4 border-t border-border/50; }
+.wiki-content h3 { @apply text-lg font-medium tracking-tight mt-8 mb-3; }
+.wiki-content p { @apply my-4 leading-[1.8] text-foreground/90; }
+.wiki-content ul { @apply my-4 space-y-1.5 list-disc pl-5; }
+.wiki-content ol { @apply my-4 space-y-1.5 list-decimal pl-5; }
+.wiki-content li { @apply leading-[1.8]; }
+.wiki-content blockquote { @apply border-l-[3px] border-accent-blue/40 pl-4 my-6 py-1 italic text-muted-foreground; }
+.wiki-content a { @apply text-accent-blue underline underline-offset-2 decoration-accent-blue/30 hover:decoration-accent-blue; }
+.wiki-content code { @apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono; }
+.wiki-content pre { @apply rounded-lg bg-muted border border-border p-4 my-6 overflow-x-auto text-sm; }
+.wiki-content pre code { @apply bg-transparent p-0; }
+.wiki-content img { @apply max-w-full h-auto rounded-lg my-5 border border-border/30; }
+.wiki-content table { @apply w-full border-collapse my-6; }
+.wiki-content th { @apply border border-border px-3 py-2 text-left text-sm font-semibold bg-muted; }
+.wiki-content td { @apply border border-border px-3 py-2 text-sm; }
+.wiki-content hr { @apply my-8 border-border; }
