@@ -6,6 +6,7 @@ import { relativeTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ChatPanel } from '@/components/wiki/ChatPanel';
 import type { KnowledgeBase } from '@llmwiki/shared';
 
 export function WikisPage(): JSX.Element {
@@ -105,51 +106,63 @@ export function WikisPage(): JSX.Element {
 
       {hasWikis && (
         <div class="flex-1 overflow-y-auto">
-          <div class="max-w-4xl mx-auto px-8 py-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {wikis!.map((kb) => (
-                <button
-                  key={kb.id}
-                  onClick={() => navigate(`/wikis/${kb.slug}`)}
-                  class="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left group"
-                >
-                  <div class="flex items-center gap-3 min-w-0 w-full">
-                    <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-muted group-hover:bg-accent shrink-0">
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path d="M4 19.5v-15A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 010-5H20" />
-                      </svg>
+          <div class="max-w-5xl mx-auto px-8 py-6 space-y-8">
+            {/* Wiki cards */}
+            <div>
+              <h2 class="text-sm font-semibold text-muted-foreground mb-3">Your Wikis</h2>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {wikis!.map((kb) => (
+                  <button
+                    key={kb.id}
+                    onClick={() => navigate(`/wikis/${kb.slug}`)}
+                    class="flex flex-col items-start gap-3 p-5 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left group"
+                  >
+                    <div class="flex items-center gap-3 min-w-0 w-full">
+                      <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-muted group-hover:bg-accent shrink-0">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path d="M4 19.5v-15A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 010-5H20" />
+                        </svg>
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <h2 class="text-sm font-medium text-foreground truncate">{kb.name}</h2>
+                        {kb.description && (
+                          <p class="text-xs text-muted-foreground mt-0.5 truncate">{kb.description}</p>
+                        )}
+                      </div>
                     </div>
-                    <div class="min-w-0 flex-1">
-                      <h2 class="text-sm font-medium text-foreground truncate">{kb.name}</h2>
-                      {kb.description && (
-                        <p class="text-xs text-muted-foreground mt-0.5 truncate">{kb.description}</p>
-                      )}
+                    <div class="flex items-center gap-2 text-[11px] text-muted-foreground/50 w-full">
+                      <span>
+                        {[
+                          kb.sourceCount ? `${kb.sourceCount} sources` : null,
+                          kb.wikiPageCount ? `${kb.wikiPageCount} pages` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || 'Empty'}
+                      </span>
+                      <span class="ml-auto shrink-0">{relativeTime(kb.updatedAt)}</span>
                     </div>
-                  </div>
-                  <div class="flex items-center gap-2 text-[11px] text-muted-foreground/50 w-full">
-                    <span>
-                      {[
-                        kb.sourceCount ? `${kb.sourceCount} sources` : null,
-                        kb.wikiPageCount ? `${kb.wikiPageCount} pages` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || 'Empty'}
-                    </span>
-                    <span class="ml-auto shrink-0">{relativeTime(kb.updatedAt)}</span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
 
-              {/* New wiki card */}
-              <button
-                onClick={() => setShowCreate(true)}
-                class="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-accent/30 transition-colors cursor-pointer"
-              >
-                <svg class="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path d="M12 5v14m-7-7h14" />
-                </svg>
-                <span class="text-xs text-muted-foreground">New Wiki</span>
-              </button>
+                {/* New wiki card */}
+                <button
+                  onClick={() => setShowCreate(true)}
+                  class="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-accent/30 transition-colors cursor-pointer"
+                >
+                  <svg class="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14m-7-7h14" />
+                  </svg>
+                  <span class="text-xs text-muted-foreground">New Wiki</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Chat */}
+            <div>
+              <h2 class="text-sm font-semibold text-muted-foreground mb-3">Ask your wikis</h2>
+              <div class="h-[500px]">
+                <ChatPanel embedded />
+              </div>
             </div>
           </div>
         </div>

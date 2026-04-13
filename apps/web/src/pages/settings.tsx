@@ -41,9 +41,23 @@ export function SettingsPage(): JSX.Element {
         <section class="mb-8">
           <h2 class="text-base font-medium mb-4">Profile</h2>
           <div class="flex items-center gap-4">
-            {user.avatarUrl && (
-              <img src={user.avatarUrl} alt="" class="w-10 h-10 rounded-full" />
-            )}
+            <div class="flex items-center justify-center w-10 h-10 rounded-full bg-primary text-primary-foreground text-sm font-medium shrink-0 overflow-hidden">
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  class="w-full h-full object-cover"
+                  referrerpolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).parentElement!.textContent =
+                      (user.displayName ?? user.email).charAt(0).toUpperCase();
+                  }}
+                />
+              ) : (
+                (user.displayName ?? user.email).charAt(0).toUpperCase()
+              )}
+            </div>
             <div>
               <p class="text-sm font-medium">{user.displayName ?? user.email}</p>
               <p class="text-xs text-muted-foreground">{user.email}</p>

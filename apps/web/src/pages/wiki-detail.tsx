@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { connectSSE } from '@/lib/sse';
+import { ChatPanel } from '@/components/wiki/ChatPanel';
 import type { KnowledgeBase, Document } from '@llmwiki/shared';
 
 interface Props {
@@ -34,6 +35,8 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Document[]>([]);
+  const [searchIndex, setSearchIndex] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const params = useSearchParams();
@@ -73,7 +76,7 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
       }
     });
     return disconnect;
-  }, [kb?.id]);
+  }, [kb ? kb.id : null]);
 
   // Load KB by slug
   useEffect(() => {
@@ -350,7 +353,19 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
           </div>
 
           {/* Bottom */}
-          <div class="shrink-0 border-t border-border p-2">
+          <div class="shrink-0 border-t border-border p-2 space-y-0.5">
+            <button
+              onClick={() => setChatOpen((v) => !v)}
+              class={cn(
+                'flex items-center gap-2 w-full px-2 py-1 text-xs rounded-md transition-colors',
+                chatOpen ? 'bg-accent text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+            >
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              </svg>
+              Chat
+            </button>
             <Link href="/settings" class="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent">
               <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
@@ -375,6 +390,13 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
             </div>
           )}
         </div>
+
+        {/* Chat panel */}
+        {chatOpen && kb && (
+          <div class="w-96 shrink-0 h-full">
+            <ChatPanel kbId={kb.id} kbName={kb.name} onClose={() => setChatOpen(false)} />
+          </div>
+        )}
       </div>
 
       {/* Search overlay */}
@@ -395,8 +417,8 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
                 onInput={(e) => {
                   const q = (e.target as HTMLInputElement).value;
                   setSearchQuery(q);
+                  setSearchIndex(0);
                   if (q.trim() && kb) {
-                    // Filter docs client-side for instant results
                     const lower = q.toLowerCase();
                     setSearchResults(
                       docs.filter(
@@ -411,14 +433,37 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
                   }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape') setSearchOpen(false);
+                  if (e.key === 'Escape') { setSearchOpen(false); return; }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSearchIndex((i) => Math.min(i + 1, searchResults.length - 1));
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSearchIndex((i) => Math.max(i - 1, 0));
+                    return;
+                  }
+                  if (e.key === 'Enter' && searchResults.length > 0) {
+                    e.preventDefault();
+                    const doc = searchResults[searchIndex];
+                    if (doc) {
+                      if (doc.path.startsWith('/wiki/')) {
+                        selectWikiPage(doc);
+                      } else {
+                        selectSourceDoc(doc);
+                      }
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }
+                  }
                 }}
               />
               <kbd class="text-[10px] text-muted-foreground/30 bg-muted px-1.5 py-0.5 rounded">esc</kbd>
             </div>
             {searchResults.length > 0 && (
               <div class="max-h-80 overflow-y-auto py-2">
-                {searchResults.map((doc) => (
+                {searchResults.map((doc, idx) => (
                   <button
                     key={doc.id}
                     onClick={() => {
@@ -430,7 +475,11 @@ export function WikiDetailPage({ slug }: Props): JSX.Element {
                       setSearchOpen(false);
                       setSearchQuery('');
                     }}
-                    class="flex items-center gap-3 w-full px-4 py-2 text-sm hover:bg-accent transition-colors text-left"
+                    onMouseEnter={() => setSearchIndex(idx)}
+                    class={cn(
+                      'flex items-center gap-3 w-full px-4 py-2 text-sm transition-colors text-left',
+                      idx === searchIndex ? 'bg-accent' : 'hover:bg-accent/50',
+                    )}
                   >
                     <FileIcon type={doc.fileType} />
                     <div class="min-w-0 flex-1">

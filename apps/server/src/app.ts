@@ -11,6 +11,7 @@ import { userRoutes } from './routes/user.js';
 import { searchRoutes } from './routes/search.js';
 import { streamRoutes } from './routes/stream.js';
 import { ingestRoutes } from './routes/ingest.js';
+import { chatRoutes } from './routes/chat.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -36,6 +37,7 @@ export function createApp(): Hono {
   app.route('/api/v1', searchRoutes);
   app.route('/api/v1', streamRoutes);
   app.route('/api/v1', ingestRoutes);
+  app.route('/api/v1', chatRoutes);  // POST /api/v1/chat (global)
 
   if (process.env.LLMWIKI_SERVE_WEB === '1') {
     // Production: serve static web assets

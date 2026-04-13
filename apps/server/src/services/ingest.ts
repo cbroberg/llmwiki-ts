@@ -168,6 +168,8 @@ function spawnClaude(prompt: string, timeoutMs: number): Promise<string> {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    child.stdin.end();
+
     let stdout = '';
     let stderr = '';
 
